@@ -1,10 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -67,8 +69,38 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	encodedImage := base64.StdEncoding.EncodeToString(imgData)
-	thumbnailDataURL := fmt.Sprintf("data:%s;base64,%s", mediaType, encodedImage)
+	baseType, _, err := mime.ParseMediaType(mediaType)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unrecognized file type", err)
+		return
+	}
+
+	ext := ".bin"
+	if exts, err := mime.ExtensionsByType(baseType); err == nil && len(exts) > 0 {
+		ext = exts[0]
+	}
+
+	imgRelPath := fmt.Sprintf("%s%s", videoIDString, ext)
+	imgPath := filepath.Join(cfg.assetsRoot, imgRelPath)
+	imgFile, err := os.Create(imgPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "File creation error", err)
+		return
+	}
+	defer imgFile.Close()
+
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't reset uploaded file", err)
+		return
+	}
+
+	_, err = io.Copy(imgFile, file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "File write error", err)
+		return
+	}
+
+	thumbnailDataURL := fmt.Sprintf("http://localhost:%s/assets/%s", cfg.port, imgRelPath)
 	video.ThumbnailURL = &thumbnailDataURL
 	if err := cfg.db.UpdateVideo(video); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Video update failed", err)

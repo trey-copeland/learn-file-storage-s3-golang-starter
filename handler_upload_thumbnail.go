@@ -74,6 +74,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusInternalServerError, "Unrecognized file type", err)
 		return
 	}
+	if baseType != "image/jpeg" && baseType != "image/png" {
+		respondWithError(w, http.StatusNotAcceptable, "Unaccepted type", err)
+		return
+	}
 
 	ext := ".bin"
 	if exts, err := mime.ExtensionsByType(baseType); err == nil && len(exts) > 0 {
